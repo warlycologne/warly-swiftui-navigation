@@ -5,7 +5,7 @@ import PackageDescription
 import CompilerPluginSupport
 
 let package = Package(
-    name: "warly-swiftui-navigation",
+    name: "WarlyNavigation",
     platforms: [
         .iOS(.v17),
         .macOS(.v10_15),

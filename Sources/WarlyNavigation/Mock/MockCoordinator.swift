@@ -1,6 +1,7 @@
 import SwiftUI
 
-package class MockCoordinator: Coordinator {
+public typealias MockNavigator = MockCoordinator
+public class MockCoordinator: Coordinator {
     public let id = UUID()
 
     public var horizontalSizeClass: UserInterfaceSizeClass?

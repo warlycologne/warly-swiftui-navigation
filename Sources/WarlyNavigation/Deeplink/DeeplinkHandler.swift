@@ -16,15 +16,16 @@ public protocol DeeplinkHandler {
 /// A protocol to provide an action to be executed for a given deeplink url
 @MainActor
 public protocol DeeplinkResolver {
-    // handles given url and returns a closure to be executed if the url can be handled
-    // otherwise it returns nil
+    /// handles given url and returns a closure to be executed if the url can be handled
+    /// otherwise it returns nil
+    /// - Parameter url: The url to handle
     func destinationForDeeplink(url: URL) -> Destination?
 }
 
 /// A protocol for a concrete module deeplink handler
 /// Conforming to this protocol you define app scheme links and universal links as regexes that are supported by this handler
 @MainActor
-public protocol DeeplinkProvider: DeeplinkResolver {
+public protocol DeeplinkProvider {
     /// An enum that contains all the cases that your deep links can match
     associatedtype MatchType
     /// An enum that contains all parameters which can occur within the deep links that this handler supports
@@ -37,6 +38,12 @@ public protocol DeeplinkProvider: DeeplinkResolver {
     /// The links are defined as KeyValuePairs so that the order is kept intact. You should specify the links from specific to generic
     var universalLinks: KeyValuePairs<String, MatchType> { get }
 
+    /// handles given url and returns a closure to be executed if the url can be handled
+    /// otherwise it returns nil
+    /// - Parameter url: The url to handle
+    /// - Parameter configuration: The configuration for handling deeplinks
+    func destinationForDeeplink(url: URL, configuration: DeeplinkConfiguration) -> Destination?
+    
     /// Define this method to perform the navigation for the matched type and parameters
     func destination(for type: MatchType, parameters: DeeplinkParameters<Parameter>) -> (any Destination)?
 }
@@ -45,14 +52,15 @@ public extension DeeplinkProvider {
     var appSchemeLinks: KeyValuePairs<String, MatchType> { [:] }
     var universalLinks: KeyValuePairs<String, MatchType> { [:] }
 
-    // TODO: Move configuration of `appscheme` and `unviversal url` out of package
     /// tries to find an action that matches the given url
-    func destinationForDeeplink(url: URL) -> Destination? {
+    func destinationForDeeplink(url: URL, configuration: DeeplinkConfiguration) -> Destination? {
         // given url is an app scheme url
-        if url.scheme == "appscheme" {
-            return match(url: url, in: appSchemeLinks, prefix: "appscheme://")
+        if let appScheme = configuration.appScheme, url.scheme == appScheme {
+            return match(url: url, in: appSchemeLinks, prefix: "\(appScheme)://")
+        } else if let universalLinkPrefixRegex = configuration.universalLinkPrefixRegex {
+            return match(url: url, in: universalLinks, prefix: universalLinkPrefixRegex)
         } else {
-            return match(url: url, in: universalLinks, prefix: "https?://(.*\\.)?website\\.de/")
+            return nil
         }
     }
 

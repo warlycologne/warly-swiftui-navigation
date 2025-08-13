@@ -60,6 +60,7 @@ extension NavigationResolver {
 
 public class DefaultNavigationResolver<C: Coordinator>: NavigationResolver {
     private let stateDestinationViewFactory: any StateDestinationViewFactory
+    private let deeplinkConfiguration: DeeplinkConfiguration
     private let coordinatorType: C.Type
 
     private var deeplinkProviders: [any DeeplinkProvider] = []
@@ -72,9 +73,11 @@ public class DefaultNavigationResolver<C: Coordinator>: NavigationResolver {
     /// - Parameter coordinatorType: The class used to instanatiate new coordinators
     public init(
         stateDestinationViewFactory: any StateDestinationViewFactory,
+        deeplinkConfiguration: DeeplinkConfiguration = .init(),
         coordinatorType: C.Type = DefaultCoordinator.self
     ) {
         self.stateDestinationViewFactory = stateDestinationViewFactory
+        self.deeplinkConfiguration = deeplinkConfiguration
         self.coordinatorType = coordinatorType
 
         registerViewFactory(stateDestinationViewFactory)
@@ -197,7 +200,7 @@ public class DefaultNavigationResolver<C: Coordinator>: NavigationResolver {
 extension DefaultNavigationResolver: DeeplinkResolver {
     public func destinationForDeeplink(url: URL) -> Destination? {
         for deeplinkProvider in deeplinkProviders {
-            if let destination = deeplinkProvider.destinationForDeeplink(url: url) {
+            if let destination = deeplinkProvider.destinationForDeeplink(url: url, configuration: deeplinkConfiguration) {
                 return destination
             }
         }

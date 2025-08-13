@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 @MainActor
 public protocol Navigator: AnyObject, DeeplinkHandler, Sendable {
@@ -90,6 +91,20 @@ extension Navigator {
     @discardableResult
     public func navigateBack(to reference: DestinationReference) async -> (any Navigator)? {
         await navigateBack(to: .last, reference)
+    }
+
+    public func showAlert(
+        title: LocalizedStringKey? = nil,
+        message: LocalizedStringKey? = nil,
+        textFields: [AlertViewModel.TextField] = [],
+        actions: [AlertViewModel.Action]
+    ) {
+        self.showAlert(.init(
+            title: title,
+            message: message,
+            textFields: textFields,
+            actions: actions
+        ))
     }
 
     /// Dismiss any alert regardless of id

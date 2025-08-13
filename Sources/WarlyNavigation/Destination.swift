@@ -52,6 +52,20 @@ public struct AlertDestination: Destination {
     public init(_ alertViewModel: AlertViewModel) {
         self.alertViewModel = alertViewModel
     }
+
+    public init(
+        title: LocalizedStringKey? = nil,
+        message: LocalizedStringKey? = nil,
+        textFields: [AlertViewModel.TextField] = [],
+        actions: [AlertViewModel.Action]
+    ) {
+        self.init(.init(
+            title: title,
+            message: message,
+            textFields: textFields,
+            actions: actions
+        ))
+    }
 }
 
 /// A destination that is used if the system could not find a `ViewDestination` for the requested destination
