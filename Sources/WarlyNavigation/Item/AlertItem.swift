@@ -2,8 +2,8 @@ import SwiftUI
 
 // MARK: ViewModel
 
-/// ViewModel for use with the new ```alert(viewModel:)``` modifier
-/// For single-button alerts set secondaryButton to nil
+/// ViewModel for use with in ``Navigator/showAlert(_:)``
+/// You may also use the convenience method ``Navigator/showAlert(title:message:textFields:actions:)`` that creates the view model for you
 public struct AlertViewModel {
     public struct Action: Identifiable {
         public var id: String { String("\(label)") }
@@ -28,7 +28,7 @@ public struct AlertViewModel {
 
     @MainActor
     public struct TextField {
-        let configurationHandler: ((UITextField) -> Void)?
+        public let configurationHandler: ((UITextField) -> Void)?
 
         public static func `default`(text: String? = nil, placeholder: String? = nil, configurationHandler: ((UITextField) -> Void)? = nil) -> Self {
             Self(configurationHandler: { textField in

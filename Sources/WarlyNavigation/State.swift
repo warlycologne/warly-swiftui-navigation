@@ -2,7 +2,8 @@ import SwiftUI
 
 /// Destinations that are used by the navigation package itself
 public enum StateDestination: ViewDestination {
-    case notFound(any ViewDestination)
+    case notResolvable(Destination)
+    case missingViewFactory(any ViewDestination)
     case placeholder
 
     var isPlaceholder: Bool {
@@ -38,9 +39,9 @@ public enum NavigationStackContentType {
 }
 
 public protocol StateDestinationViewFactory: ViewFactory<StateDestination> {
-    associatedtype S: View
+    associatedtype DecoratedStateView: View
 
     /// Decorate the given state view with anything you need to match your apps design
     @ViewBuilder
-    func decorate(_ view: StateView, navigator: any Navigator, context: ViewContext) -> S
+    func decorate(_ view: StateView, navigator: any Navigator, context: ViewContext) -> DecoratedStateView
 }

@@ -49,7 +49,7 @@ public struct TabItem: Identifiable, Hashable {
         self.badgePublisher = badgePublisher ?? Just(nil).eraseToAnyPublisher()
     }
 
-    public static func == (lhs: TabItem, rhs: TabItem) -> Bool {
+    public static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.id == rhs.id
     }
 

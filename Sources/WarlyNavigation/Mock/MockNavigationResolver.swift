@@ -2,6 +2,9 @@ import Combine
 import SwiftUI
 
 public final class MockNavigationResolver: NavigationResolver {
+    public var requirementsToFail: [RequirementIdentifier] = []
+    public private(set) var requestedViews: [any ViewDestination] = []
+
     public init() {
         // Does nothing
     }
@@ -10,7 +13,7 @@ public final class MockNavigationResolver: NavigationResolver {
         // Does nothing
     }
 
-    public func destinationForDeeplink(url: URL) -> Destination? {
+    public func destinationForDeeplink(url: URL) -> (any Destination)? {
         nil
     }
 
@@ -18,24 +21,19 @@ public final class MockNavigationResolver: NavigationResolver {
         // Does nothing
     }
 
-    public func nextUnresolvedRequirement(for destination: any ViewDestination) async throws(NavigationResolverError) -> (any Requirement)? {
+    public func nextUnresolvedRequirement(of identifiers: [RequirementIdentifier]) async throws(NavigationResolverError) -> (any Requirement)? {
         nil
     }
 
-    public func resolveRequirements(for destination: any ViewDestination,navigator: any Navigator) async throws(NavigationResolverError) {
-        // Does nothing
+    public func resolveRequirements(_ identifiers: [RequirementIdentifier], navigator: any Navigator) async throws(NavigationResolverError) {
+        let failingRequirements = identifiers.filter { requirementsToFail.contains($0) }
+        if let firstFailingRequirement = failingRequirements.first {
+            throw .requirementFailed(firstFailingRequirement)
+        }
     }
 
     public func updatePublisher(for requirement: RequirementIdentifier) throws(NavigationResolverError) -> RequirementUpdatePublisher {
         Empty().eraseToAnyPublisher()
-    }
-
-    public func makeTabCoordinator(destination: any ViewDestination, reference: DestinationReference?) -> any Coordinator {
-        makeCoordinator(root: .init(destination: destination, references: [.tabRoot, reference]), parent: nil)
-    }
-
-    public func makeCoordinator(root: NavigationItem, parent: (any Coordinator)?) -> any Coordinator {
-        MockCoordinator(root: root, parent: parent, resolver: self)
     }
 
     public func registerViewFactory<T: ViewFactory>(_ viewFactory: T) {
@@ -46,28 +44,42 @@ public final class MockNavigationResolver: NavigationResolver {
         // Does nothing
     }
 
-    public func resolveDestination<D: Destination>(_ destination: D) -> (any ViewDestination)? {
-        nil
+    public func resolveDestination<D: Destination>(_ destination: D) -> ResolveDestinationResult? {
+        guard let viewDestination = destination as? ViewDestination else { return nil }
+        return (viewDestination, nil)
     }
 
     public func view<D: ViewDestination>(for destination: D, navigator: any Navigator, context: inout ViewContext) -> any View {
-        EmptyView()
+        requestedViews.append(destination)
+        return EmptyView()
     }
 
     public func decorateNavigationStack<T: View, D: ViewDestination>(
         _ navigationStack: T,
         for destination: D,
+        isPresenting: Bool,
         navigator: any Navigator,
         context: ViewContext
     ) -> any View {
         navigationStack
     }
+}
 
-    public func decorateStateView(_ stateView: StateView, navigator: any Navigator, context: ViewContext) -> any View {
-        switch stateView {
-        case .navigationStack(let view, _): view
-        case .navigationStackContent(let view, _): view
-        case .bottomSheet(let view, _): view
-        }
+extension MockNavigationResolver {
+    public func sendAction<T: DestinationAction>(_ action: T, to target: DestinationReference) {
+        // Does nothing
+    }
+
+    public func subscribe<T: DestinationAction>(
+        target: DestinationReference,
+        to action: T.Type,
+        condition: AnyPublisher<Bool, Never>,
+        handler: @escaping (T) -> Void
+    ) -> UUID {
+        UUID()
+    }
+
+    public func unsubscribe(_ subscriptionID: UUID) {
+        // Does nothing
     }
 }

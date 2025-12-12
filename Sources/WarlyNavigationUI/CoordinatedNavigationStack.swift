@@ -2,13 +2,12 @@ import SwiftUI
 import WarlyNavigation
 
 public struct CoordinatedNavigationStack: View {
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.appHorizontalSizeClass) private var appHorizontalSizeClass
     @Environment(\.coordinatorStack) @Binding private var coordinatorStack
     @Environment(\.presentation) private var presentation
     @Environment(\.isModal) private var isModal
     @State private var coordinator: any Coordinator
     @State private var isPresenting = false
-    @State private var didAppear = false
 
     /// Tells whether this view is part of the currently visible stack
     private var isActive: Bool {
@@ -35,6 +34,7 @@ public struct CoordinatedNavigationStack: View {
         .alert(viewModel: $coordinator.alertViewModel)
         .sheet(item: $coordinator.sheetItem, onDismiss: coordinator.sheetItem?.onDismiss) { sheetItem in
             presentedNavigationStack(for: sheetItem)
+                .sheetSizing(presentation: sheetItem.presentation)
         }
         .fullScreenCover(item: $coordinator.fullScreenItem, onDismiss: coordinator.fullScreenItem?.onDismiss) { fullScreenItem in
             presentedNavigationStack(for: fullScreenItem)
@@ -47,7 +47,7 @@ public struct CoordinatedNavigationStack: View {
         .onDisappear {
             coordinatorStack.remove(coordinator)
         }
-        .onChange(of: horizontalSizeClass, initial: true) { coordinator.horizontalSizeClass = horizontalSizeClass }
+        .onChange(of: appHorizontalSizeClass, initial: true) { coordinator.appHorizontalSizeClass = appHorizontalSizeClass }
     }
 
     @ViewBuilder
@@ -57,42 +57,61 @@ public struct CoordinatedNavigationStack: View {
                 .navigationDestination(for: NavigationItem.self) { navigationItem in
                     var context = makeContext(reference: navigationItem.id)
                     view(for: navigationItem, context: &context)
+                        .navigationTransition(navigationItem.transition)
                 }
         }
     }
 
     private func presentedNavigationStack(for presentationItem: PresentationItem) -> some View {
-        CoordinatedNavigationStack(coordinator: presentationItem.coordinator)
+        Self(coordinator: presentationItem.coordinator)
+            .bottomSheet(isActive: presentationItem.isBottomSheet)
             .interactiveDismissDisabled(presentationItem.isModal)
             .environment(\.presentation, presentationItem.presentation)
             .environment(\.isModal, presentationItem.isModal)
-            .onVisibilityChange(update: $isPresenting)
+            .onLifecycleEvent { handleLifecycleEvent($0, onWillUpdate: $isPresenting) }
+            .navigationTransition(presentationItem.transition)
+            .id(presentationItem.coordinator.id)
     }
 
     private func view(for navigationItem: NavigationItem, context: inout ViewContext) -> some View {
         AnyView(coordinator.view(for: navigationItem, context: &context))
-            .bottomSheet(isActive: presentation == .bottomSheet)
             .environment(\.isViewFocused, isActive ? coordinator.isFocused(navigationItem: navigationItem) : false)
+            .environment(\.destinationReference, navigationItem.id)
+            .onLifecycleEvent { handleLifecycleEvent($0) }
     }
 
     private func makeContext(reference: DestinationReference, isRoot: Bool = false, showCloseButton: Bool = false) -> ViewContext {
         ViewContext(
             isRoot: isRoot,
             reference: reference,
-            horizontalSizeClass: horizontalSizeClass,
             presentation: presentation,
             showCloseButton: showCloseButton
         )
+    }
+
+    private func handleLifecycleEvent(_ event: ViewLifecycleEvent, onWillUpdate will: Binding<Bool>? = nil) {
+        switch event {
+        case .willAppear: will?.wrappedValue = true
+        case .willDisappear: will?.wrappedValue = false
+        case .didAppear: coordinator.itemDidAppear()
+        case .didDisappear: coordinator.itemDidDisappear()
+        }
     }
 }
 
 extension EnvironmentValues {
     /// An array of all active coordinators analogous to a navigation stack
     @Entry public var coordinatorStack: Binding<[any Coordinator]> = .constant([])
+    /// The app wide horizontal size class. The value updates when the size of the app changes
+    @Entry public var appHorizontalSizeClass: UserInterfaceSizeClass?
     /// Whether this view is focused (no presenting view on top, the user can interact with it)
     @Entry public var isViewFocused = false
     /// How this view is presented if applicable
-    @Entry public var presentation: Presentation? = nil
+    @Entry public var presentation: Presentation?
     /// Whether the current navigation stack is presented modally
     @Entry public var isModal: Bool = false
+    /// Namespace for transitions
+    @Entry public var transitionNamespace: Namespace.ID?
+    /// The reference to the destination of the view.
+    @Entry public var destinationReference: DestinationReference = .init(rawValue: UUID().uuidString)
 }

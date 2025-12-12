@@ -2,8 +2,8 @@ import Combine
 import SwiftUI
 
 @MainActor
-public protocol Coordinator: Navigator {
-    var horizontalSizeClass: UserInterfaceSizeClass? { get set }
+public protocol Coordinator: Navigator, NavigationResult {
+    var appHorizontalSizeClass: UserInterfaceSizeClass? { get set }
 
     var root: NavigationItem { get }
     var navigationPath: [NavigationItem] { get set }
@@ -18,13 +18,6 @@ public protocol Coordinator: Navigator {
     )
 
     func setUp()
-    @discardableResult
-    func navigateBack(
-        to occurrence: DestinationOccurrence,
-        _ reference: DestinationReference,
-        whenIn path: DestinationSearchPath,
-        force: Bool
-    ) async -> (any Navigator)?
 
     @discardableResult
     func dismiss(force: Bool) async -> Bool
@@ -33,48 +26,67 @@ public protocol Coordinator: Navigator {
 
     func view(for navigationItem: NavigationItem, context: inout ViewContext) -> any View
     func decorateNavigationStack<T: View>(_ navigationStack: T, isPresenting: Bool, context: ViewContext) -> any View
+
+    func itemDidAppear()
+    func itemDidDisappear()
 }
 
 extension Coordinator {
-    public func navigateBack(
-        to occurrence: DestinationOccurrence,
-        _ reference: DestinationReference,
-        whenIn path: DestinationSearchPath
-    ) async -> (any Navigator)? {
-        await navigateBack(to: occurrence, reference, whenIn: path, force: false)
-    }
-    
     public func dismiss() async -> Bool {
         await dismiss(force: false)
+    }
+}
+
+extension Coordinator where Self == DefaultCoordinator {
+    public static func makeTabCoordinator(destination: ViewDestination, resolver: any NavigationResolver) -> Self {
+        .init(root: .init(destination: destination, references: [.tabRoot]), parent: nil, resolver: resolver)
     }
 }
 
 @Observable @MainActor
 public final class DefaultCoordinator: Coordinator {
     public let id = UUID()
-    public var horizontalSizeClass: UserInterfaceSizeClass?
+    /// Used for unit tests as the coordinator is not hooked up a view
+    internal var disableLifecycleObservation = false
+    @ObservationIgnored public var appHorizontalSizeClass: UserInterfaceSizeClass?
 
     public private(set) var root: NavigationItem
-    public var navigationPath: [NavigationItem] = []
+    public var navigationPath: [NavigationItem] = [] {
+        didSet {
+            // Remove caches for removed navigation items
+            Set(oldValue.map(\.viewID)).subtracting(navigationPath.map(\.viewID)).forEach {
+                cleanUp(for: $0)
+            }
+        }
+    }
     public var fullScreenItem: PresentationItem? {
-        get { presentationItem?.presentation == .fullScreen ? presentationItem : nil }
+        get { presentationItem?.fullScreenItem }
         set { presentationItem = newValue }
     }
     public var sheetItem: PresentationItem? {
-        get { [.sheet, .bottomSheet].contains(presentationItem?.presentation) ? presentationItem : nil }
+        get { presentationItem?.sheetItem }
         set { presentationItem = newValue }
     }
     public var alertViewModel: AlertViewModel?
     private let resolver: any NavigationResolver
-    public private(set) weak var parent: (any Coordinator)?
+    @ObservationIgnored public private(set) weak var parent: (any Coordinator)?
 
-    private var canFinishCondition: (() async -> Bool)?
-    private var presentationItem: PresentationItem?
+    @ObservationIgnored private var canFinishCondition: (() async -> Bool)?
+    private var presentationItem: PresentationItem? {
+        didSet {
+            if presentationItem == nil, let viewID = oldValue?.coordinator.root.viewID {
+                cleanUp(for: viewID)
+            }
+        }
+    }
 
-    private var observedRequirements: Set<RequirementIdentifier> = []
     private var currentUnresolvedRequirement: RequirementIdentifier?
-    private var cancellables: Set<AnyCancellable> = []
-    @ObservationIgnored private var cachedDestinations: [String: (view: any View, context: ViewContext)] = [:]
+    @ObservationIgnored private var observedRequirements: Set<RequirementIdentifier> = []
+    @ObservationIgnored private var requirementCancellables: [ViewID: AnyCancellable] = [:]
+    /// Cached objects per view id.
+    @ObservationIgnored private var cachedObjects: [ViewID: [ObjectIdentifier: Weak<AnyObject>]] = [:]
+    @ObservationIgnored private var appearContinuation: CheckedContinuation<Void, Never>?
+    @ObservationIgnored private var disappearContinuation: CheckedContinuation<Void, Never>?
 
     private subscript(navigationItem: NavigationItem) -> NavigationItem {
         get { navigationPath.firstIndex(withSameOriginal: navigationItem).map { navigationPath[$0] } ?? root }
@@ -103,64 +115,81 @@ public final class DefaultCoordinator: Coordinator {
         }
     }
 
+    public static func makeTabCoordinator(
+        destination: any ViewDestination,
+        resolver: any NavigationResolver
+    ) -> Self {
+        .init(root: .init(destination: destination, references: [.tabRoot]), parent: nil, resolver: resolver)
+    }
+
     public func setUp() {
         observeRequirements(for: root)
     }
 
-    public func navigate(
-        to destination: Destination,
-        by navigationAction: NavigationAction?,
-        reference: DestinationReference?
-    ) {
-        Task { @MainActor [weak self] in
-            guard let self, let destination = resolver.resolveDestination(destination) else {
-                return
+    public func resolveRequirements(_ requirements: [RequirementIdentifier]) async -> Bool {
+        do throws(NavigationResolverError) {
+            try await resolver.resolveRequirements(requirements, navigator: self)
+        } catch {
+            return false
+        }
+
+        return true
+    }
+
+    public func navigate(to destination: Destination, by navigationAction: NavigationAction?) async -> (any NavigationResult)? {
+        guard let (destination, action) = resolver.resolveDestination(destination) else {
+            return nil
+        }
+
+        let result = await Task {
+            if let handledDestination = destination as? HandledDestination {
+                return await handledDestination.execute()
             }
 
             // resolve any requirements
-            guard await resolveRequirements(for: destination) else {
-                return
+            guard await resolveRequirements(destination.requirements) else {
+                return nil
             }
 
-            let navigationItem = NavigationItem(destination: destination, reference: reference)
-            switch (navigationAction ?? destination.preferredAction)[horizontalSizeClass] {
+            let navigationAction = (navigationAction ?? destination.preferredAction)[appHorizontalSizeClass]
+            let navigationItem = NavigationItem(destination: destination, transition: navigationAction.transition)
+            switch navigationAction {
             case .pushing:
-                guard await dismiss() else { return }
+                guard await dismiss() else { return self }
                 observeRequirements(for: navigationItem)
                 navigationPath.append(navigationItem)
+                await itemDidCompleteAppearing()
+                return self
             case let .presenting(presentation, isModal, onDismiss):
+                let coordinator = Self(root: navigationItem, parent: self, resolver: resolver)
                 presentationItem = PresentationItem(
-                    coordinator: resolver.makeCoordinator(root: navigationItem, parent: self),
+                    coordinator: coordinator,
                     presentation: presentation,
                     isModal: isModal,
                     onDismiss: onDismiss
                 )
+                await itemDidCompleteAppearing()
+                return coordinator
             }
-        }
+        }.value
+
+        action.map { result?.sendAction($0) }
+        return result
     }
 
-    public func navigateBack(
-        to occurrence: DestinationOccurrence,
-        _ reference: DestinationReference,
-        whenIn path: DestinationSearchPath,
-        force: Bool
-    ) async -> (any Navigator)? {
-        guard let index = (root == reference)
+    public func navigateBack(to search: DestinationSearch, whenIn path: DestinationSearch.Path) async -> (any NavigationResult)? {
+        guard let index = (root == search.reference)
             ? navigationPath.startIndex - 1
-            : navigationPath.findIndex(of: occurrence, reference)
+            : navigationPath.findIndex(of: search.occurrence, search.reference)
         else {
             guard path != .currentPath else { return nil }
-            return await parent?.navigateBack(to: occurrence, reference, whenIn: .anyPath)
+            let result = await parent?.navigateBack(to: search, whenIn: .anyPath)
+            return result
         }
 
-        switch occurrence {
+        switch search.occurrence {
         case .first:
-            if path != .currentPath, let handledCoordinator = await parent?.navigateBack(
-                to: occurrence,
-                reference,
-                whenIn: .anyPath,
-                force: force
-            ) {
+            if path != .currentPath, let handledCoordinator = await parent?.navigateBack(to: search, whenIn: .anyPath) {
                 return handledCoordinator
             }
 
@@ -168,40 +197,43 @@ public final class DefaultCoordinator: Coordinator {
         }
 
         if path != .previousPath {
-            navigationPath.removeSubrange(index.advanced(by: 1)...)
+            if root == search.reference {
+                navigationPath.removeAll()
+                if search.target == .before {
+                    return await finish()
+                }
+            } else {
+                let lowerBound = search.target == .before ? index : navigationPath.index(after: index)
+                navigationPath.removeSubrange(lowerBound...)
+            }
         }
 
-        guard await dismiss(force: force) else { return nil }
+        guard await dismiss(force: search.force) else { return nil }
         return self
     }
 
-    public func navigateBack() async -> (any Navigator)? {
+    public func navigateBack() async -> (any NavigationResult)? {
         if navigationPath.isEmpty {
             await finish()
             return parent
         } else {
-            pop()
+            navigationPath.removeLast()
+            await itemDidCompleteDisappearing()
             return self
         }
-    }
-
-    public func pop() {
-        navigationPath.removeLast()
-    }
-
-    public func popToRoot() {
-        navigationPath.removeAll()
     }
 
     public func dismiss(force: Bool) async -> Bool {
         guard !force else {
             presentationItem = nil
+            await itemDidCompleteDisappearing()
             return true
         }
 
         guard let presentationItem else { return true }
         guard await presentationItem.coordinator.canFinish() else { return false }
         self.presentationItem = nil
+        await itemDidCompleteDisappearing()
         return true
     }
 
@@ -211,10 +243,14 @@ public final class DefaultCoordinator: Coordinator {
     }
 
     @discardableResult
-    public func finish() async -> Bool {
+    public func finish() async -> (any NavigationResult)? {
         // Not calling `canFinish` here. it is validated in parent's `dismiss` method
         // This is to ensure it is always validated when someone tries to finish this coordinator
-        await parent?.dismiss() ?? false
+        await parent?.dismiss() ?? false ? parent : nil
+    }
+
+    public func finish(_ reference: DestinationReference) async -> (any NavigationResult)? {
+        await navigateBack(to: .first(reference).before(), whenIn: .anyPath)
     }
 
     public func showAlert(_ alertViewModel: AlertViewModel) {
@@ -242,64 +278,45 @@ public final class DefaultCoordinator: Coordinator {
         canFinishCondition = nil
     }
 
+    public func sendAction(_ action: DestinationAction) {
+        if let presentationItem {
+            presentationItem.coordinator.sendAction(action)
+        } else {
+            resolver.sendAction(action, to: navigationPath.last?.id ?? root.id)
+        }
+    }
+
     public func observesRequirement(_ identifier: RequirementIdentifier) -> Bool {
         observedRequirements.contains(identifier) || (parent?.observesRequirement(identifier) ?? false)
     }
 
     public func isFocused(navigationItem: NavigationItem) -> Bool {
         guard presentationItem == nil else { return false }
-        let focusedDestination = navigationPath.last?.id ?? root.id
-        return navigationItem.id == focusedDestination
+        return navigationItem == navigationPath.last ?? root
     }
 
     public func view(for navigationItem: NavigationItem, context: inout ViewContext) -> any View {
-        let view: any View
-        if let cachedDestination = cachedDestinations[navigationItem.viewID] {
-            view = cachedDestination.view
-            context = cachedDestination.context
-        } else {
-            view = resolver.view(
-                for: navigationItem.visibleDestination,
-                navigator: self,
-                context: &context
-            )
+        context.cache = cachedObjects[navigationItem.viewID]?.compactMapValues(\.value) ?? [:]
+        let view = resolver.view(
+            for: navigationItem.visibleDestination,
+            navigator: self,
+            context: &context
+        )
+        if !context.cache.isEmpty {
+            cachedObjects[navigationItem.viewID] = context.cache.mapValues { .init(value: $0) }
         }
 
-        let stateView: StateView
-        if context.presentation == .bottomSheet {
-            stateView = .bottomSheet(AnyView(view), showCloseButton: context.showCloseButton)
-        } else {
-            stateView = .navigationStackContent(AnyView(view), context.isRoot ? .root(showCloseButton: context.showCloseButton) : .path)
-        }
-
-        return resolver.decorateStateView(stateView, navigator: self, context: context)
-            .onAppear { [weak self, context] in
-                guard let self, navigationItem.visibleDestination.cacheView else { return }
-                cachedDestinations[navigationItem.viewID] = (view, context)
-            }
-            .onDisappear { [weak self] in
-                self?.cachedDestinations.removeValue(forKey: navigationItem.viewID)
-            }
+        return view
     }
 
     public func decorateNavigationStack<T: View>(_ navigationStack: T, isPresenting: Bool, context: ViewContext) -> any View {
-        let view = resolver.decorateNavigationStack(
-            AnyView(navigationStack),
+        resolver.decorateNavigationStack(
+            navigationStack,
             for: root.visibleDestination,
+            isPresenting: isPresenting,
             navigator: self,
             context: context
         )
-        return resolver.decorateStateView(.navigationStack(AnyView(view), isPresenting: isPresenting), navigator: self, context: context)
-    }
-
-    private func resolveRequirements(for destination: ViewDestination) async -> Bool {
-        do throws(NavigationResolverError) {
-            try await resolver.resolveRequirements(for: destination, navigator: self)
-        } catch {
-            return false
-        }
-
-        return true
     }
 
     private func observeRequirements(for navigationItem: NavigationItem) {
@@ -317,8 +334,8 @@ public final class DefaultCoordinator: Coordinator {
         let publishers = requirements.map(\.publisher)
         guard !publishers.isEmpty else { return }
 
-        Publishers.MergeMany(publishers)
-            .receive(on: DispatchQueue.main)
+        requirementCancellables[navigationItem.viewID] = Publishers.MergeMany(publishers)
+            .receive(on: RunLoop.main)
             .dropFirst(navigationItem == root ? 0 : 1)
             .filter { [weak self] in
                 [nil, $0].contains(self?.currentUnresolvedRequirement)
@@ -331,15 +348,22 @@ public final class DefaultCoordinator: Coordinator {
                     await self?.evaluateRequirements(for: navigationItem)
                 }
             }
-            .store(in: &cancellables)
     }
 
     private func evaluateRequirements(for navigationItem: NavigationItem) async {
+        let isPlaceholder = (self[navigationItem].visibleDestination as? StateDestination)?.isPlaceholder ?? false
+
         // Nothing to resolve
-        guard let unresolvedRequirement = try? await resolver.nextUnresolvedRequirement(for: navigationItem.originalDestination) else {
+        guard let unresolvedRequirement = try? await resolver.nextUnresolvedRequirement(of: navigationItem.originalDestination.requirements) else {
             if self[navigationItem].isBlocked {
                 self[navigationItem].unblock()
-                await navigateBack(to: navigationItem.id)
+                // If it's the placeholder it means we're on the root and no requirement needed to be resolved.
+                // To get the view updated we reset the navigation path which triggers the unblocking
+                if isPlaceholder {
+                    navigationPath.removeAll()
+                } else {
+                    await navigateBack(to: navigationItem.id)
+                }
             }
 
             currentUnresolvedRequirement = nil
@@ -349,16 +373,46 @@ public final class DefaultCoordinator: Coordinator {
         // Set actual unresolved requirement
         currentUnresolvedRequirement = unresolvedRequirement.identifier
 
-        let isPlaceholder = (self[navigationItem].visibleDestination as? StateDestination)?.isPlaceholder ?? false
         let reason: BlockingReason = isPlaceholder ? .navigation : .invalidation
         // Navigate back to before the navigation item in question (or to root)
-        guard await navigateBack(to: .first, navigationItem.id, whenIn: .anyPath, force: true) != nil else { return }
+        guard await navigateBack(to: .last(navigationItem.id).forced(), whenIn: .anyPath) != nil else { return }
         self[navigationItem].block(with: unresolvedRequirement.blockingDestination(reason: reason, onResolve: { [weak self] in
             Task { [weak self] in
                 guard let self else { return }
                 _ = await unresolvedRequirement.resolve(navigator: self)
             }
         }))
+    }
+
+    private func cleanUp(for viewID: ViewID) {
+        cachedObjects.removeValue(forKey: viewID)
+        requirementCancellables.removeValue(forKey: viewID)
+    }
+}
+
+extension DefaultCoordinator {
+    public func itemDidAppear() {
+        appearContinuation?.resume()
+        appearContinuation = nil
+    }
+
+    public func itemDidDisappear() {
+        disappearContinuation?.resume()
+        disappearContinuation = nil
+    }
+
+    private func itemDidCompleteAppearing() async {
+        guard !disableLifecycleObservation else { return }
+        await withCheckedContinuation {
+            appearContinuation = $0
+        }
+    }
+
+    private func itemDidCompleteDisappearing() async {
+        guard !disableLifecycleObservation else { return }
+        await withCheckedContinuation {
+            disappearContinuation = $0
+        }
     }
 }
 
@@ -370,16 +424,18 @@ extension DefaultCoordinator {
             return false
         }
 
-        guard let viewDestination = resolver.resolveDestination(destination) else {
+        guard let (destination, action) = resolver.resolveDestination(destination) else {
             return true
         }
 
         // if the preferred action is presenting we use that configuration otherwise we use the normal presentation
-        let navigationAction = viewDestination.preferredAction[horizontalSizeClass].isPresenting
-            ? viewDestination.preferredAction
+        let navigationAction = destination.preferredAction[appHorizontalSizeClass].isPresenting
+            ? destination.preferredAction
             : .presenting
 
-        navigate(to: destination, by: navigationAction, reference: nil)
+        navigate(to: destination, by: navigationAction) { result in
+            action.map { result?.sendAction($0) }
+        }
         return true
     }
 }

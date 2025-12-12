@@ -43,7 +43,7 @@ public protocol DeeplinkProvider {
     /// - Parameter url: The url to handle
     /// - Parameter configuration: The configuration for handling deeplinks
     func destinationForDeeplink(url: URL, configuration: DeeplinkConfiguration) -> Destination?
-    
+
     /// Define this method to perform the navigation for the matched type and parameters
     func destination(for type: MatchType, parameters: DeeplinkParameters<Parameter>) -> (any Destination)?
 }

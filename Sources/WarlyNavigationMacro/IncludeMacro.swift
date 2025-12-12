@@ -3,7 +3,7 @@ import SwiftSyntax
 import SwiftSyntaxBuilder
 import SwiftSyntaxMacros
 
-struct NavigateToMacro: DeclarationMacro {
+struct IncludeMacro: DeclarationMacro {
     static func expansion(
         of node: some FreestandingMacroExpansionSyntax,
         in context: some MacroExpansionContext
@@ -11,8 +11,9 @@ struct NavigateToMacro: DeclarationMacro {
         guard let destinationName = node.arguments.firstToken(viewMode: .all)?.text else { return [] }
         return [
             """
-            func navigate(to destination: \(raw: destinationName), by navigationAction: NavigationAction? = nil, completion: NavigationCompletion? = nil) {
-                navigate(to: destination as any WarlyNavigation.Destination, by: navigationAction, completion: completion)
+            @MainActor
+            func callAsFunction(_ destination: \(raw: destinationName)) -> some View {
+                view(for: destination)
             }
             """,
         ]

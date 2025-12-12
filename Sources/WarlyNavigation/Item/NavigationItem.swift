@@ -1,54 +1,54 @@
 import Foundation
 import SwiftUI
 
+typealias ViewID = String
+
+@MainActor
 public struct NavigationItem: Hashable, Identifiable {
     /// The destination reference that uniquely identifies this navigation item
     public let id: DestinationReference = .init(rawValue: UUID().uuidString)
     /// The destination for this navigation item
     /// If this navigation item is blocked it returns the blocking destination instead
-    public var visibleDestination: any ViewDestination {
+    public var visibleDestination: ViewDestination {
         (blockingDestination ?? originalDestination)
     }
+    /// How this navigation item should be transitioned to
+    public let transition: Transition
     /// Whether this navigation item is blocked
     public var isBlocked: Bool {
         blockingDestination != nil
     }
 
     /// An id that uniquely identifies the view of the visible destination
-    private(set) var viewID: String
+    private(set) var viewID: ViewID
 
     /// All references associated with this navigation item
     let references: [DestinationReference]
     /// Convenience accessor to the requirements of this destination
     /// The blocking destination may not have requirements. A navigation item always represents the original
-    @MainActor var requirements: [RequirementIdentifier] { originalDestination.requirements }
+    var requirements: [RequirementIdentifier] { originalDestination.requirements }
 
-    let originalDestination: any ViewDestination
+    let originalDestination: ViewDestination
     /// A destination that is blocking the original destination due to missing requirements
-    private var blockingDestination: (any ViewDestination)?
-
-    /// Creates a new navigation item with given destination and optional reference
-    /// - Parameter destination: The destination this navigation item points to
-    /// - Parameter reference: An optional reference to support back navigation to this navigation item
-    public init(destination: any ViewDestination, reference: DestinationReference? = nil) {
-        self.init(destination: destination, references: reference.map { [$0] } ?? [])
-    }
+    private var blockingDestination: ViewDestination?
 
     /// Creates a new navigation item with given destination and multiple references
     /// - Parameter destination: The destination this navigation item points to
+    /// - Parameter transition: The transition to use when showing the destination
     /// - Parameter references: An array of references to support back navigation
-    public init(destination: any ViewDestination, references: [DestinationReference?]) {
+    public init(destination: ViewDestination, transition: Transition = .automatic, references: [DestinationReference?] = []) {
         viewID = id.rawValue
         originalDestination = destination
-        self.references = references.compactMap { $0 }
+        self.transition = transition
+        self.references = references.compactMap { $0 } + destination.references
     }
 
-    public func hash(into hasher: inout Hasher) {
+    nonisolated public func hash(into hasher: inout Hasher) {
         hasher.combine(id)
     }
 
     /// Compares the id of the navigation items
-    public static func == (lhs: Self, rhs: Self) -> Bool {
+    nonisolated public static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.id == rhs.id
     }
 
@@ -72,13 +72,14 @@ public struct NavigationItem: Hashable, Identifiable {
         viewID = id.rawValue
     }
 
-    func hasSameOriginal(as navigationItem: NavigationItem) -> Bool {
+    func hasSameOriginal(as navigationItem: Self) -> Bool {
         id == navigationItem.id
     }
 }
 
+@MainActor
 extension Array where Element == NavigationItem {
-    func findIndex(of occurrence: DestinationOccurrence, _ reference: DestinationReference) -> Index? {
+    func findIndex(of occurrence: DestinationSearch.Occurrence, _ reference: DestinationReference) -> Index? {
         switch occurrence {
         case .first: firstIndex { $0 == reference }
         case .last: lastIndex { $0 == reference }

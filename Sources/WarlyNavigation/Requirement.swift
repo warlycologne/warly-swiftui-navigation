@@ -5,7 +5,7 @@ import Foundation
 /// Extend this struct in any package to add new requirement identifiers. Example:
 ///
 ///     extension RequirementIdentifier {
-///         public #Identifier("login")
+///         public static let login = Self(name: "login")
 ///     }
 public struct RequirementIdentifier: Hashable, Sendable {
     private let id = UUID()

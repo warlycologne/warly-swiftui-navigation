@@ -7,6 +7,7 @@ public struct CoordinatedTabView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var selectedTab: TabID
     @State private var badges: [TabID: String?] = [:]
+    @State private var appearingContinuation: CheckedContinuation<Void, Never>?
     private let tabs: [TabItem]
     private let selectedTabColor: Color?
     private let contentTint: Color?
@@ -51,22 +52,36 @@ public struct CoordinatedTabView: View {
                     .onReceive(tab.badgePublisher) { badge in
                         badges[tab.id] = badge
                     }
+                    .onAppear {
+                        appearingContinuation?.resume()
+                        appearingContinuation = nil
+                    }
             }
         }
         .tint(selectedTabColor)
         .onAppear {
             // Make sure to not capture `self` in the closures, otherwise it creates a retain cycle
             resolver.registerMapper(for: TabDestination.self) { [coordinatorStack, $selectedTab] destination in
-                Task { @MainActor in
+                HandledDestination {
+                    guard let tab = tabs[destination.tabID] else { return nil }
                     guard let coordinator = coordinatorStack.wrappedValue.first,
                         await coordinator.dismiss() else {
-                        return
+                        return nil
                     }
 
-                    $selectedTab.wrappedValue = destination.tabID
-                }
+                    if selectedTab != destination.tabID {
+                        $selectedTab.wrappedValue = destination.tabID
+                        await withCheckedContinuation { continuation in
+                            appearingContinuation = continuation
+                        }
+                    }
 
-                return nil
+                    if destination.popToRoot {
+                        await tab.coordinator.navigateBack(to: tab.coordinator.root.id)
+                    }
+
+                    return tab.coordinator
+                }
             }
         }
     }

@@ -5,5 +5,6 @@ import SwiftSyntaxMacros
 struct WarlyNavigationMacro: CompilerPlugin {
     let providingMacros: [Macro.Type] = [
         NavigateToMacro.self,
+        IncludeMacro.self,
     ]
 }
