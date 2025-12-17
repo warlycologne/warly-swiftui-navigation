@@ -3,9 +3,9 @@ import WarlyNavigation
 
 extension View {
     @ViewBuilder
-    public func navigationTransitionSource(id: TransitionID) -> some View {
+    public func navigationTransitionSource(id: TransitionID, backgroundColor: Color? = nil) -> some View {
         if #available(iOS 18.0, *) {
-            modifier(NavigationTransitionSourceViewModifier(transitionID: id) { $0 })
+            modifier(NavigationTransitionSourceViewModifier(transitionID: id) { $0.background(backgroundColor ?? .clear) })
         } else {
             self
         }

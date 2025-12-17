@@ -24,8 +24,8 @@ extension Destination {
     /// Convenience method to attach an action to a destination
     /// - Parameter action: The action to be executed after navigating to the destination
     /// - Returns an `ActionableDestination`
-    public func withAction(_ action: DestinationAction?) -> ActionableDestination {
-        .init(destination: self, action: action)
+    public func withAction(_ action: DestinationAction?) -> some Destination {
+        ActionableDestination(destination: self, action: action)
     }
 }
 

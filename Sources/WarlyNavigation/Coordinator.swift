@@ -46,7 +46,7 @@ extension Coordinator where Self == DefaultCoordinator {
 @Observable @MainActor
 public final class DefaultCoordinator: Coordinator {
     public let id = UUID()
-    /// Used for unit tests as the coordinator is not hooked up a view
+    /// Used for unit tests as the coordinator is not hooked up to a view
     internal var disableLifecycleObservation = false
     @ObservationIgnored public var appHorizontalSizeClass: UserInterfaceSizeClass?
 
@@ -224,14 +224,11 @@ public final class DefaultCoordinator: Coordinator {
     }
 
     public func dismiss(force: Bool) async -> Bool {
-        guard !force else {
-            presentationItem = nil
-            await itemDidCompleteDisappearing()
-            return true
+        guard let presentationItem else { return true }
+        if !force {
+            guard await presentationItem.coordinator.canFinish() else { return false }
         }
 
-        guard let presentationItem else { return true }
-        guard await presentationItem.coordinator.canFinish() else { return false }
         self.presentationItem = nil
         await itemDidCompleteDisappearing()
         return true

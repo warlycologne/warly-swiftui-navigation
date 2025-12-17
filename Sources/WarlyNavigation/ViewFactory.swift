@@ -42,7 +42,7 @@ public struct ViewContext: CachableViewContext {
     /// The presentation if this view is presented
     public let presentation: Presentation?
 
-    /// Custom data. See `cache()` and `extract()
+    /// Custom data. See `cache()` and `extract()`
     public var cache: [ObjectIdentifier: AnyObject]
     /// Whether the view shows a close button. Used for internal use only
     let showCloseButton: Bool
