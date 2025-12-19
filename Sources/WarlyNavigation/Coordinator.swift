@@ -2,7 +2,7 @@ import Combine
 import SwiftUI
 
 @MainActor
-public protocol Coordinator: Navigator, NavigationResult {
+public protocol Coordinator: Navigator {
     var appHorizontalSizeClass: UserInterfaceSizeClass? { get set }
 
     var root: NavigationItem { get }
@@ -18,6 +18,7 @@ public protocol Coordinator: Navigator, NavigationResult {
     )
 
     func setUp()
+    func sendAction(_ action: DestinationAction)
 
     @discardableResult
     func dismiss(force: Bool) async -> Bool
@@ -136,7 +137,7 @@ public final class DefaultCoordinator: Coordinator {
         return true
     }
 
-    public func navigate(to destination: Destination, by navigationAction: NavigationAction?) async -> (any NavigationResult)? {
+    public func navigate(to destination: Destination, by navigationAction: NavigationAction?) async -> (any Navigator)? {
         guard let (destination, action) = resolver.resolveDestination(destination) else {
             return nil
         }
@@ -177,7 +178,7 @@ public final class DefaultCoordinator: Coordinator {
         return result
     }
 
-    public func navigateBack(to search: DestinationSearch, whenIn path: DestinationSearch.Path) async -> (any NavigationResult)? {
+    public func navigateBack(to search: DestinationSearch, whenIn path: DestinationSearch.Path) async -> (any Navigator)? {
         guard let index = (root == search.reference)
             ? navigationPath.startIndex - 1
             : navigationPath.findIndex(of: search.occurrence, search.reference)
@@ -212,7 +213,7 @@ public final class DefaultCoordinator: Coordinator {
         return self
     }
 
-    public func navigateBack() async -> (any NavigationResult)? {
+    public func navigateBack() async -> (any Navigator)? {
         if navigationPath.isEmpty {
             await finish()
             return parent
@@ -240,13 +241,13 @@ public final class DefaultCoordinator: Coordinator {
     }
 
     @discardableResult
-    public func finish() async -> (any NavigationResult)? {
+    public func finish() async -> (any Navigator)? {
         // Not calling `canFinish` here. it is validated in parent's `dismiss` method
         // This is to ensure it is always validated when someone tries to finish this coordinator
         await parent?.dismiss() ?? false ? parent : nil
     }
 
-    public func finish(_ reference: DestinationReference) async -> (any NavigationResult)? {
+    public func finish(_ reference: DestinationReference) async -> (any Navigator)? {
         await navigateBack(to: .first(reference).before(), whenIn: .anyPath)
     }
 
@@ -430,9 +431,7 @@ extension DefaultCoordinator {
             ? destination.preferredAction
             : .presenting
 
-        navigate(to: destination, by: navigationAction) { result in
-            action.map { result?.sendAction($0) }
-        }
+        navigate(to: destination.withAction(action), by: navigationAction)
         return true
     }
 }

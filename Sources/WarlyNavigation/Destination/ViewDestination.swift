@@ -27,8 +27,8 @@ extension ViewDestination {
 
 /// A destination that handles navigation itself
 public struct HandledDestination: ViewDestination {
-    public let execute: () async -> (any NavigationResult)?
-    public init(execute: @escaping () async -> (any NavigationResult)?) {
+    public let execute: () async -> (any Coordinator)?
+    public init(execute: @escaping () async -> (any Coordinator)?) {
         self.execute = execute
     }
 }

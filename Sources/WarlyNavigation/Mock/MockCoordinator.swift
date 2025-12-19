@@ -37,15 +37,15 @@ public class MockCoordinator: Coordinator {
         true
     }
 
-    public func navigate(to destination: Destination, by navigationAction: NavigationAction?) async -> (any NavigationResult)? {
+    public func navigate(to destination: Destination, by navigationAction: NavigationAction?) async -> (any Navigator)? {
         self
     }
 
-    public func navigateBack(to search: DestinationSearch, whenIn path: DestinationSearch.Path) async -> (any NavigationResult)? {
+    public func navigateBack(to search: DestinationSearch, whenIn path: DestinationSearch.Path) async -> (any Navigator)? {
         nil
     }
 
-    public func navigateBack() async -> (any NavigationResult)? {
+    public func navigateBack() async -> (any Navigator)? {
         nil
     }
 
@@ -57,11 +57,11 @@ public class MockCoordinator: Coordinator {
         true
     }
 
-    public func finish() async -> (any NavigationResult)? {
+    public func finish() async -> (any Navigator)? {
         nil
     }
 
-    public func finish(_ reference: DestinationReference) async -> (any NavigationResult)? {
+    public func finish(_ reference: DestinationReference) async -> (any Navigator)? {
         nil
     }
 

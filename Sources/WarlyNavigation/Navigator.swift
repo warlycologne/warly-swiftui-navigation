@@ -3,12 +3,7 @@ import SwiftUI
 
 /// Completion handler called after a navigation operation completes.
 /// - Parameter navigator: The resulting navigator managing the destination after navigation. May be `nil` if navigation failed or no navigator is available.
-public typealias NavigationCompletion = ((any NavigationResult)?) -> Void
-
-public protocol NavigationResult: Navigator {
-    /// An action to be send to the destination of the navigation
-    func sendAction(_ action: DestinationAction)
-}
+public typealias NavigationCompletion = ((any Navigator)?) -> Void
 
 @MainActor
 public protocol Navigator: AnyObject, DeeplinkHandler, Sendable {
@@ -23,20 +18,20 @@ public protocol Navigator: AnyObject, DeeplinkHandler, Sendable {
     /// - Parameter navigationAction: The optional action how the destination is shown to the user. If nil the default action defined by the destination is used
     /// - Returns the navigator the destination is managed by depending on the navigation action. Returns nil when the destination does not support further navigation
     @discardableResult
-    func navigate(to destination: Destination, by navigationAction: NavigationAction?) async -> (any NavigationResult)?
+    func navigate(to destination: Destination, by navigationAction: NavigationAction?) async -> (any Navigator)?
     /// Navigates back to the occurrence of the given reference.
     /// May be blocked by a finish condition, therefore it's async
     /// - Parameter search: Defines to which occurrence of the reference should be navigated to
     /// - Parameter path: The path where the destination should be searched in
     /// - Returns the navigator on which the found destination is. Returns nil when the reference could not be found
     @discardableResult
-    func navigateBack(to search: DestinationSearch, whenIn path: DestinationSearch.Path) async -> (any NavigationResult)?
+    func navigateBack(to search: DestinationSearch, whenIn path: DestinationSearch.Path) async -> (any Navigator)?
     /// Navigates to the previous view
     /// If the current view is the root it calls `finish()`
     /// else it navigates back to the previous view
     /// - Returns the navigator holding the previous view. Returns nil if there is no previous view
     @discardableResult
-    func navigateBack() async -> (any NavigationResult)?
+    func navigateBack() async -> (any Navigator)?
 
     /// Dismisses the current presented view
     /// May be blocked by a finish condition, therefore it's async
@@ -66,13 +61,13 @@ public protocol Navigator: AnyObject, DeeplinkHandler, Sendable {
     /// Any finish condition is resolved
     /// - Returns the parent navigator or nil if finishing did not succeed
     @discardableResult
-    func finish() async -> (any NavigationResult)?
+    func finish() async -> (any Navigator)?
 
     /// Finishes the given occurence of a reference
     /// - Parameter reference: Defines to which occurrence of the reference should be finished
     /// - Returns the parent navigator or nil if finishing did not succeed
     @discardableResult
-    func finish(_ reference: DestinationReference) async -> (any NavigationResult)?
+    func finish(_ reference: DestinationReference) async -> (any Navigator)?
 }
 
 extension Navigator {
@@ -119,7 +114,7 @@ extension Navigator {
     /// - Parameter reference: Defines to which reference should be navigated to
     /// - Parameter path: The path where the destination should be searched in
     @discardableResult
-    public func navigateBack(to reference: DestinationReference, whenIn path: DestinationSearch.Path = .anyPath) async -> (any NavigationResult)? {
+    public func navigateBack(to reference: DestinationReference, whenIn path: DestinationSearch.Path = .anyPath) async -> (any Navigator)? {
         await navigateBack(to: .last(reference), whenIn: path)
     }
 

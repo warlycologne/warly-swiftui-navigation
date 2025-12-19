@@ -15,7 +15,7 @@ private struct ViewLifecycleEventViewModifier: UIViewControllerRepresentable {
     let onEvent: (ViewLifecycleEvent) -> Void
 
     func makeUIViewController(context: Context) -> UIViewController {
-        let viewController = ViewApearingViewController()
+        let viewController = ViewAppearingViewController()
         viewController.onEvent = onEvent
         return viewController
     }
@@ -24,7 +24,7 @@ private struct ViewLifecycleEventViewModifier: UIViewControllerRepresentable {
         // Does nothing
     }
 
-    private class ViewApearingViewController: UIViewController {
+    private class ViewAppearingViewController: UIViewController {
         var onEvent: ((ViewLifecycleEvent) -> Void)?
 
         override func viewWillAppear(_ animated: Bool) {
