@@ -5,7 +5,7 @@ import SwiftUI
 /// Extend this struct to add any tab id you need. Example:
 ///
 ///     extension TabID {
-///         public #Identifier("start")
+///         static let start = Self(name: "start")
 ///     }
 public struct TabID: Hashable, Sendable {
     private let id = UUID()
@@ -17,6 +17,9 @@ public struct TabID: Hashable, Sendable {
 }
 
 extension Array where Element == TabItem {
+    /// Returns the `TabItem` with the given tab id if available
+    /// - Parameter tabID: The unique id of the tab in question
+    /// - Returns the `TabItem` of the id if available
     public subscript(tabID: TabID) -> TabItem? {
         first { $0.id == tabID }
     }
@@ -27,6 +30,7 @@ extension DestinationReference {
     public static let tabRoot = Self(rawValue: "tabRoot")
 }
 
+/// The data model for a tab in a `CoordinatedTabView`
 public struct TabItem: Identifiable, Hashable {
     public let id: TabID
     public let title: String
@@ -34,6 +38,13 @@ public struct TabItem: Identifiable, Hashable {
     public let coordinator: any Coordinator
     public let badgePublisher: AnyPublisher<String?, Never>
 
+    /// Creates a new tab item data model
+    /// - Parameter id: The unique `TabID` of the tab
+    /// - Parameter title: The title of the tab
+    /// - Parameter icon: The icon of the tab
+    /// - Parameter selected: An optional icon used when the tab is selected. Defaults to `icon` if nil
+    /// - Parameter coordinator: The coordinator of this tab. Use `Coordinator.makeTabCoordinator(destination:resolver:)` to create it
+    /// - Parameter badgePublisher: An optional publisher to set the badge of the tab
     public init(
         id: TabID,
         title: String,

@@ -85,7 +85,7 @@ public final class DefaultCoordinator: Coordinator {
     @ObservationIgnored private var observedRequirements: Set<RequirementIdentifier> = []
     @ObservationIgnored private var requirementCancellables: [ViewID: AnyCancellable] = [:]
     /// Cached objects per view id.
-    @ObservationIgnored private var cachedObjects: [ViewID: [ObjectIdentifier: Weak<AnyObject>]] = [:]
+    @ObservationIgnored private var cachedObjects: [ViewID: [ObjectIdentifier: WeakObject]] = [:]
     @ObservationIgnored private var appearContinuation: CheckedContinuation<Void, Never>?
     @ObservationIgnored private var disappearContinuation: CheckedContinuation<Void, Never>?
 

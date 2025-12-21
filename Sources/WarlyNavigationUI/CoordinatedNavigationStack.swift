@@ -3,7 +3,7 @@ import WarlyNavigation
 
 public struct CoordinatedNavigationStack: View {
     @Environment(\.appHorizontalSizeClass) private var appHorizontalSizeClass
-    @Environment(\.coordinatorStack) @Binding private var coordinatorStack
+    @Environment(\.coordinatorStack) private var coordinatorStack
     @Environment(\.presentation) private var presentation
     @Environment(\.isModal) private var isModal
     @State private var coordinator: any Coordinator
@@ -101,7 +101,7 @@ public struct CoordinatedNavigationStack: View {
 
 extension EnvironmentValues {
     /// An array of all active coordinators analogous to a navigation stack
-    @Entry public var coordinatorStack: Binding<[any Coordinator]> = .constant([])
+    @Entry public var coordinatorStack: CoordinatorStack = .init()
     /// The app wide horizontal size class. The value updates when the size of the app changes
     @Entry public var appHorizontalSizeClass: UserInterfaceSizeClass?
     /// Whether this view is focused (no presenting view on top, the user can interact with it)

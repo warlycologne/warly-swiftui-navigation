@@ -5,13 +5,11 @@ import WarlyNavigation
 public struct CoordinatedTabView: View {
     @Environment(\.coordinatorStack) private var coordinatorStack
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @State private var selectedTab: TabID
     @State private var badges: [TabID: String?] = [:]
-    @State private var appearingContinuation: CheckedContinuation<Void, Never>?
-    private let tabs: [TabItem]
+    @State private var manager: CoordinatedTabManager
+
     private let selectedTabColor: Color?
     private let contentTint: Color?
-    private let resolver: any NavigationResolver
 
     private var iconRenderingMode: Image.TemplateRenderingMode {
         if #available(iOS 26, *) {
@@ -23,27 +21,30 @@ public struct CoordinatedTabView: View {
         }
     }
 
+    /// Create a new coordinated tab view
+    /// - Parameter tabs: The tabs to display in the tab bar
+    /// - Parameter selectedTabColor: The color the selected tab should be tinted in
+    /// - Parameter contentTint: The accent color used for the content
+    /// - Parameter resolver: The navigation resolver to tregister the `TabDestination` with
     public init(
         tabs: [TabItem],
         selectedTabColor: Color? = nil,
         contentTint: Color? = nil,
         resolver: any NavigationResolver
     ) {
-        self.tabs = tabs
         self.selectedTabColor = selectedTabColor
         self.contentTint = contentTint
-        self.resolver = resolver
-        selectedTab = tabs.first?.id ?? .none
+        _manager = .init(initialValue: CoordinatedTabManager(resolver: resolver, tabs: tabs))
     }
 
     public var body: some View {
-        TabView(selection: $selectedTab) {
-            ForEach(tabs) { tab in
+        TabView(selection: $manager.selectedTab) {
+            ForEach(manager.tabs) { tab in
                 CoordinatedNavigationStack(coordinator: tab.coordinator)
                     .tint(contentTint)
                     .id(tab.id)
                     .tabItem {
-                        let isSelected = tab.id == selectedTab
+                        let isSelected = tab.id == manager.selectedTab
                         (isSelected ? tab.icon.selected : tab.icon.normal)
                             .renderingMode(iconRenderingMode)
                         Text(horizontalSizeClass == .compact || isSelected ? tab.title : "")
@@ -52,38 +53,64 @@ public struct CoordinatedTabView: View {
                     .onReceive(tab.badgePublisher) { badge in
                         badges[tab.id] = badge
                     }
-                    .onAppear {
-                        appearingContinuation?.resume()
-                        appearingContinuation = nil
-                    }
+                    .onAppear(perform: manager.tabDidAppear)
             }
         }
         .tint(selectedTabColor)
         .onAppear {
-            // Make sure to not capture `self` in the closures, otherwise it creates a retain cycle
-            resolver.registerMapper(for: TabDestination.self) { [coordinatorStack, $selectedTab] destination in
-                HandledDestination {
-                    guard let tab = tabs[destination.tabID] else { return nil }
-                    guard let coordinator = coordinatorStack.wrappedValue.first,
-                        await coordinator.dismiss() else {
-                        return nil
-                    }
+            manager.setUp(coordinatorStack: coordinatorStack)
+        }
+    }
+}
 
-                    if selectedTab != destination.tabID {
-                        $selectedTab.wrappedValue = destination.tabID
-                        await withCheckedContinuation { continuation in
-                            appearingContinuation = continuation
-                        }
-                    }
+/// The manager of the coordinated tab view. Ensures the view is not retained past its lifetime
+/// It registers the `TabDestination` for manual tab switching
+@Observable @MainActor
+private final class CoordinatedTabManager {
+    let tabs: [TabItem]
+    var selectedTab: TabID
 
-                    if destination.popToRoot {
-                        await tab.coordinator.navigateBack(to: tab.coordinator.root.id)
-                    }
+    private let resolver: any NavigationResolver
+    @ObservationIgnored private var didSetUp = false
+    @ObservationIgnored private var appearingContinuation: CheckedContinuation<Void, Never>?
 
-                    return tab.coordinator
+    init(resolver: any NavigationResolver, tabs: [TabItem]) {
+        self.resolver = resolver
+        self.tabs = tabs
+        selectedTab = tabs.first?.id ?? .none
+    }
+
+    func setUp(coordinatorStack: CoordinatorStack) {
+        guard !didSetUp else { return }
+        didSetUp = true
+
+        resolver.registerMapper(for: TabDestination.self) { [weak self] destination in
+            HandledDestination { [weak self] in
+                guard let self, let tab = tabs[destination.tabID] else { return nil }
+                guard let coordinator = coordinatorStack.first,
+                      await coordinator.dismiss() else {
+                    return nil
                 }
+
+                if selectedTab != destination.tabID {
+                    selectedTab = destination.tabID
+                    await withCheckedContinuation { continuation in
+                        appearingContinuation = continuation
+                    }
+                }
+
+                if destination.popToRoot {
+                    await tab.coordinator.navigateBack(to: tab.coordinator.root.id)
+                }
+
+                return tab.coordinator
             }
         }
+    }
+
+    func tabDidAppear() {
+        appearingContinuation?.resume()
+        appearingContinuation = nil
     }
 }
 

@@ -5,59 +5,83 @@ import WarlyNavigation
 /// Use `CoordinatedTabView` or `CoordinatedNavigationStack` with content to utilize the coordination system
 public struct CoordinatedAppView<C: View>: View {
     let content: C
-    let resolver: any NavigationResolver
-    let urlHandler: any URLHandler
 
-    @State private var coordinatorStackHolder = CoordinatorStackHolder()
+    @State private var manager: CoordinatedAppManager
     @Namespace private var transitionNamespace
-    private var coordinatorStack: Binding<[any Coordinator]> {
-        coordinatorStackHolder.binding
-    }
 
+    /// Create a new coordinated app view
+    /// - Parameter coordinatorStack: An instance of `CoordinatorStack` to hold all active coordinators
+    /// - Parameter resolver: The navigation resolver to tregister the `URLDestination` and `AlertDestination` with
+    /// - Parameter urlHandler: The handler to be called when a url comes from inside or outside the app
+    /// - Parameter content: The view to display as the app content
     public init(
+        coordinatorStack: CoordinatorStack,
         resolver: any NavigationResolver,
         urlHandler: any URLHandler = DefaultURLHandler(),
         @ViewBuilder content: () -> C
     ) {
         self.content = content()
-        self.resolver = resolver
-        self.urlHandler = urlHandler
+        _manager = .init(initialValue: CoordinatedAppManager(
+            coordinatorStack: coordinatorStack,
+            resolver: resolver,
+            urlHandler: urlHandler
+        ))
     }
 
     public var body: some View {
         content
-            .environment(\.coordinatorStack, coordinatorStack)
+            .environment(\.coordinatorStack, manager.coordinatorStack)
             .environment(\.transitionNamespace, transitionNamespace)
-            .environment(\.actionCenter, resolver)
+            .environment(\.actionCenter, manager.actionCenter)
             // handle urls tapped inside the app
-            .environment(\.openURL, OpenURLAction { [coordinatorStack, urlHandler] outgoingURL in
-                urlHandler.handleOutgoingURL(outgoingURL, navigator: coordinatorStack.wrappedValue.last) ? .handled : .systemAction
-            })
+            .environment(\.openURL, manager.outgoingURLHandler)
             // handle urls coming into the app
-            .onOpenURL { [coordinatorStack, urlHandler] incomingURL in
-                urlHandler.handleIncomingURL(incomingURL, navigator: coordinatorStack.wrappedValue.last)
-            }
-            .onAppear {
-                resolver.registerMapper(for: URLDestination.self) { [coordinatorStack, urlHandler] destination in
-                    urlHandler.handleOutgoingURL(destination.url, navigator: coordinatorStack.wrappedValue.last)
-                    return nil
-                }
-                resolver.registerMapper(for: AlertDestination.self) { [coordinatorStack] destination in
-                    coordinatorStack.wrappedValue.last?.showAlert(destination.alertViewModel)
-                    return nil
-                }
-            }
+            .onOpenURL(perform: manager.handleIncomingURL)
+            .onAppear(perform: manager.setUp)
     }
 }
 
-private final class CoordinatorStackHolder {
-    @MainActor
-    var binding: Binding<[any Coordinator]> {
-        .init(
-            get: { [weak self] in self?.coordinatorStack ?? [] },
-            set: { [weak self] in self?.coordinatorStack = $0 }
-        )
+/// The manager of the coordinated app view. Ensures the view is not retained past its lifetime
+/// It handles incoming and outgoing urls as well as registers `URLDestination` and `AlertDestination`
+@MainActor
+private final class CoordinatedAppManager {
+    var outgoingURLHandler: OpenURLAction {
+        .init { [weak self] url in
+            guard let self else { return .systemAction }
+            return urlHandler.handleOutgoingURL(url, navigator: coordinatorStack.last) ? .handled : .systemAction
+        }
     }
 
-    private var coordinatorStack: [any Coordinator] = []
+    var actionCenter: any DestinationActionCenter {
+        resolver
+    }
+    let coordinatorStack: CoordinatorStack
+    private let resolver: any NavigationResolver
+    private let urlHandler: any URLHandler
+    private var didSetUp = false
+
+    init(coordinatorStack: CoordinatorStack, resolver: any NavigationResolver, urlHandler: any URLHandler) {
+        self.coordinatorStack = coordinatorStack
+        self.resolver = resolver
+        self.urlHandler = urlHandler
+    }
+
+    func setUp() {
+        guard !didSetUp else { return }
+        didSetUp = true
+
+        resolver.registerMapper(for: URLDestination.self) { [weak self] destination in
+            guard let self else { return nil }
+            urlHandler.handleOutgoingURL(destination.url, navigator: coordinatorStack.last)
+            return nil
+        }
+        resolver.registerMapper(for: AlertDestination.self) { [weak self] destination in
+            self?.coordinatorStack.last?.showAlert(destination.alertViewModel)
+            return nil
+        }
+    }
+
+    func handleIncomingURL(_ url: URL) {
+        urlHandler.handleIncomingURL(url, navigator: coordinatorStack.last)
+    }
 }

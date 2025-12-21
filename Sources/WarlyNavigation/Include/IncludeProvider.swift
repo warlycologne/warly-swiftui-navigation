@@ -4,7 +4,7 @@ public class IncludeProvider: ObservableObject {
     private let resolver: any IncludeResolver
     private let navigator: (any Navigator)?
     /// Cached user info per view id.
-    private var cachedObjects: [ObjectIdentifier: [ObjectIdentifier: Weak<AnyObject>]] = [:]
+    private var cachedObjects: [ObjectIdentifier: [ObjectIdentifier: WeakObject]] = [:]
 
     package init(resolver: any IncludeResolver, navigator: any Navigator) {
         self.resolver = resolver
