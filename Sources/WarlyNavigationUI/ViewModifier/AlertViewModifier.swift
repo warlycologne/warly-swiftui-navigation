@@ -11,12 +11,11 @@ public extension View {
 /// Works analog to the ```alert(item:...)``` view modifier
 private struct AlertViewModifier: ViewModifier {
     @Binding var viewModel: AlertViewModel?
-    @State private var textFieldValues: [AlertTextFieldIdentifier: String] = [:]
     private var isPresented: Binding<Bool> {
         Binding(
             get: { viewModel != nil },
             set: {
-                guard $0 == false else { return }
+                guard !$0 else { return }
                 viewModel = nil
             }
         )
@@ -24,9 +23,6 @@ private struct AlertViewModifier: ViewModifier {
 
     init(viewModel: Binding<AlertViewModel?>) {
         _viewModel = viewModel
-        _textFieldValues = .init(initialValue: viewModel.wrappedValue?.textFields.reduce(into: [:], { result, textField in
-            result[textField.id] = textField.text
-        }) ?? [:])
     }
 
     func body(content: Content) -> some View {
@@ -36,8 +32,7 @@ private struct AlertViewModifier: ViewModifier {
                 isPresented: isPresented,
                 presenting: viewModel,
                 actions: { viewModel in
-                    textFields(viewModel.textFields)
-                    buttonActions(viewModel.actions)
+                    AlertActionsView(viewModel: viewModel)
                 },
                 message: { viewModel in
                     if let message = viewModel.message {
@@ -46,9 +41,26 @@ private struct AlertViewModifier: ViewModifier {
                 }
             )
     }
+}
 
-    private func textFields(_ textFields: [AlertViewModel.TextField]) -> some View {
-        ForEach(textFields) { textField in
+private struct AlertActionsView: View {
+    let viewModel: AlertViewModel
+    @State private var textFieldValues: [AlertTextFieldIdentifier: String] = [:]
+
+    init(viewModel: AlertViewModel) {
+        self.viewModel = viewModel
+        _textFieldValues = .init(initialValue: viewModel.textFields.reduce(into: [:], { result, textField in
+            result[textField.id] = textField.text
+        }))
+    }
+
+    var body: some View {
+        textFields
+        buttonActions
+    }
+
+    private var textFields: some View {
+        ForEach(viewModel.textFields) { textField in
             let textBinding = Binding(
                 get: { textFieldValues[textField.id] ?? "" },
                 set: { textFieldValues[textField.id] = $0 }
@@ -61,8 +73,8 @@ private struct AlertViewModifier: ViewModifier {
         }
     }
 
-    private func buttonActions(_ actions: [AlertViewModel.Action]) -> some View {
-        ForEach(actions) { action in
+    private var buttonActions: some View {
+        ForEach(viewModel.actions) { action in
             Button(action.label, role: action.role) {
                 Task {
                     await action.action?(textFieldValues)
