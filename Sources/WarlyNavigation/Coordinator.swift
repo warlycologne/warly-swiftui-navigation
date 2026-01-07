@@ -372,8 +372,8 @@ public final class DefaultCoordinator: Coordinator {
         currentUnresolvedRequirement = unresolvedRequirement.identifier
 
         let reason: BlockingReason = isPlaceholder ? .navigation : .invalidation
-        // Navigate back to before the navigation item in question (or to root)
-        guard await navigateBack(to: .last(navigationItem.id).forced(), whenIn: .anyPath) != nil else { return }
+        // Navigate back to the navigation item in question
+        navigateBack(to: .last(navigationItem.id).forced(), whenIn: .anyPath) as Void
         self[navigationItem].block(with: unresolvedRequirement.blockingDestination(reason: reason, onResolve: { [weak self] in
             Task { [weak self] in
                 guard let self else { return }
