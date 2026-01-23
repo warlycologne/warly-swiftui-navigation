@@ -10,6 +10,7 @@ private struct BottomSheetViewModifier: ViewModifier {
     let isActive: Bool
     @State private var defaultBottomSheetHeight: CGFloat = 0
     @State private var customBottomSheetHeight: CGFloat?
+    @State private var selectedDetent: PresentationDetent = .large
 
     private var bottomSheetHeight: CGFloat {
         customBottomSheetHeight ?? defaultBottomSheetHeight
@@ -19,10 +20,17 @@ private struct BottomSheetViewModifier: ViewModifier {
         content
             .onGeometryChange(for: CGFloat.self, of: \.size.height) {
                 // Do not trigger view updates if not active or custom height is set
-                guard isActive, customBottomSheetHeight != nil else { return }
+                guard isActive, customBottomSheetHeight == nil else { return }
                 defaultBottomSheetHeight = $0
             }
-            .presentationDetents([isActive && bottomSheetHeight > 0 ? .height(bottomSheetHeight) : .large])
+            .presentationDetents([selectedDetent])
+            .onChange(of: bottomSheetHeight) {
+                if isActive && bottomSheetHeight > 0 {
+                    selectedDetent = .height(bottomSheetHeight)
+                } else {
+                    selectedDetent = .large
+                }
+            }
             .environment(\.customBottomSheetHeight, $customBottomSheetHeight)
     }
 }

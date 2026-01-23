@@ -45,6 +45,8 @@ public protocol DeeplinkProvider {
     func destinationForDeeplink(url: URL, configuration: DeeplinkConfiguration) -> Destination?
 
     /// Define this method to perform the navigation for the matched type and parameters
+    /// - Parameter type: The type the deeplink got matched against
+    /// - Parameter parameters: Any parameters that have been captured
     func destination(for type: MatchType, parameters: DeeplinkParameters<Parameter>) -> (any Destination)?
 }
 
@@ -122,8 +124,10 @@ private extension String {
         for name in names {
             let range = result.range(withName: name)
             if range.location != NSNotFound, let swiftRange = Range(range, in: self), !self[swiftRange].isEmpty {
-                let string = String(self[swiftRange])
-                parameters[name] = string.removingPercentEncoding ?? string
+                var string = String(self[swiftRange])
+                string = string.removingPercentEncoding ?? string
+                string = string.trimmingCharacters(in: .whitespacesAndNewlines)
+                parameters[name] = string
             }
         }
 
