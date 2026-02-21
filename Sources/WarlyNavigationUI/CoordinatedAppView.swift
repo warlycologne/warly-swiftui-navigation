@@ -7,6 +7,7 @@ public struct CoordinatedAppView<C: View>: View {
     let content: C
 
     @State private var manager: CoordinatedAppManager
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Namespace private var transitionNamespace
 
     /// Create a new coordinated app view
@@ -33,6 +34,7 @@ public struct CoordinatedAppView<C: View>: View {
             .environment(\.coordinatorStack, manager.coordinatorStack)
             .environment(\.transitionNamespace, transitionNamespace)
             .environment(\.actionCenter, manager.actionCenter)
+            .environment(\.appHorizontalSizeClass, horizontalSizeClass)
             // handle urls tapped inside the app
             .environment(\.openURL, manager.outgoingURLHandler)
             // handle urls coming into the app
