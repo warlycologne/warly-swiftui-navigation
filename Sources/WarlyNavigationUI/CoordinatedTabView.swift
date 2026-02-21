@@ -62,7 +62,7 @@ public struct TabContentView<T: TabItem, TC: TabContent<TabID>>: View {
     @Binding var selectedTab: TabID
     let tabs: [T]
     let isSelected: (T) -> Bool
-    let content: ([T], _ isSelected: (T) -> Bool) -> TC
+    let content: ([T], _ isSelected: @escaping (T) -> Bool) -> TC
 
     fileprivate init(
         selectedTab: Binding<TabID>,
