@@ -13,7 +13,7 @@ private struct BottomSheetViewModifier: ViewModifier {
     @State private var selectedDetent: PresentationDetent = .large
 
     private var bottomSheetHeight: CGFloat {
-        customBottomSheetHeight ?? defaultBottomSheetHeight
+        floor(customBottomSheetHeight ?? defaultBottomSheetHeight)
     }
 
     func body(content: Content) -> some View {
