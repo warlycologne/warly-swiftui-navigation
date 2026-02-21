@@ -21,7 +21,7 @@ extension CoordinatedTabView {
     /// - Parameter tabs: The tabs to display in the tab bar
     /// - Parameter resolver: The navigation resolver to tregister the `TabDestination` with
     /// - Parameter content: The ``Tab`` content.
-    init<TC: View>(
+    public init<TC: View>(
         tabs: [T],
         resolver: any NavigationResolver,
         @ViewBuilder content: @escaping (T, _ isSelected: Bool) -> TC
@@ -47,7 +47,7 @@ extension CoordinatedTabView {
     public init<TC: TabContent<TabID>>(
         tabs: [T],
         resolver: any NavigationResolver,
-        @TabContentBuilder<TabID> content: @escaping ([T], _ isSelected: (T) -> Bool) -> TC
+        @TabContentBuilder<TabID> content: @escaping (_ tabs: [T], _ isSelected: (T) -> Bool) -> TC
     ) where C == TabContentView<T, TC> {
         self.tabs = tabs
         _manager = .init(initialValue: CoordinatedTabManager(resolver: resolver, tabs: tabs))
@@ -68,7 +68,7 @@ public struct TabContentView<T: TabItem, TC: TabContent<TabID>>: View {
         selectedTab: Binding<TabID>,
         tabs: [T],
         isSelected: @escaping (T) -> Bool,
-        content: @escaping ([T], _ isSelected: (T) -> Bool) -> TC
+        content: @escaping (_ tabs: [T], _ isSelected: (T) -> Bool) -> TC
     ) {
         _selectedTab = selectedTab
         self.tabs = tabs
