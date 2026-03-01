@@ -71,10 +71,6 @@ public struct NavigationItem: Hashable, Identifiable {
         blockingDestination = nil
         viewID = id.rawValue
     }
-
-    func hasSameOriginal(as navigationItem: Self) -> Bool {
-        id == navigationItem.id
-    }
 }
 
 @MainActor
@@ -87,6 +83,6 @@ extension Array where Element == NavigationItem {
     }
 
     func firstIndex(withSameOriginal navigationItem: NavigationItem) -> Index? {
-        firstIndex { $0.hasSameOriginal(as: navigationItem) }
+        firstIndex(of: navigationItem)
     }
 }

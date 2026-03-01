@@ -31,7 +31,7 @@ private struct BottomSheetViewModifier: ViewModifier {
                     selectedDetent = .large
                 }
             }
-            .environment(\.customBottomSheetHeight, $customBottomSheetHeight)
+            .environment(\.customBottomSheetHeight, isActive ? $customBottomSheetHeight : .constant(nil))
     }
 }
 

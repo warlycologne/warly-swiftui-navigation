@@ -92,7 +92,7 @@ public final class DefaultCoordinator: Coordinator {
     private subscript(navigationItem: NavigationItem) -> NavigationItem {
         get { navigationPath.firstIndex(withSameOriginal: navigationItem).map { navigationPath[$0] } ?? root }
         set {
-            if navigationItem.hasSameOriginal(as: root) {
+            if navigationItem == root {
                 root = newValue
             } else if let index = navigationPath.firstIndex(withSameOriginal: newValue) {
                 navigationPath[index] = newValue
@@ -156,12 +156,18 @@ public final class DefaultCoordinator: Coordinator {
             let navigationItem = NavigationItem(destination: destination, transition: navigationAction.transition)
             switch navigationAction {
             case .pushing:
-                guard await dismiss() else { return self }
+                // Dismiss of presented item did fail, discard
+                guard await dismiss() else { return nil }
                 observeRequirements(for: navigationItem)
                 navigationPath.append(navigationItem)
                 await itemDidCompleteAppearing()
                 return self
             case let .presenting(presentation, isModal, onDismiss):
+                if let presentationItem {
+                    // If there is already a presentation we wait until it was dismissed
+                    await itemDidCompleteDisappearing()
+                }
+
                 let coordinator = Self(root: navigationItem, parent: self, resolver: resolver)
                 presentationItem = PresentationItem(
                     coordinator: coordinator,

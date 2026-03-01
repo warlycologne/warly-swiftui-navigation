@@ -47,7 +47,7 @@ extension CoordinatedTabView {
     public init<TC: TabContent<TabID>>(
         tabs: [T],
         resolver: any NavigationResolver,
-        @TabContentBuilder<TabID> content: @escaping (_ tabs: [T], _ isSelected: (T) -> Bool) -> TC
+        @TabContentBuilder<TabID> content: @escaping (_ tabs: [T], _ isSelected: @escaping (T) -> Bool) -> TC
     ) where C == TabContentView<T, TC> {
         self.tabs = tabs
         _manager = .init(initialValue: CoordinatedTabManager(resolver: resolver, tabs: tabs))
@@ -68,7 +68,7 @@ public struct TabContentView<T: TabItem, TC: TabContent<TabID>>: View {
         selectedTab: Binding<TabID>,
         tabs: [T],
         isSelected: @escaping (T) -> Bool,
-        content: @escaping (_ tabs: [T], _ isSelected: (T) -> Bool) -> TC
+        content: @escaping (_ tabs: [T], _ isSelected: @escaping (T) -> Bool) -> TC
     ) {
         _selectedTab = selectedTab
         self.tabs = tabs
