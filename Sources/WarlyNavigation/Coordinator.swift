@@ -52,14 +52,7 @@ public final class DefaultCoordinator: Coordinator {
     @ObservationIgnored public var appHorizontalSizeClass: UserInterfaceSizeClass?
 
     public private(set) var root: NavigationItem
-    public var navigationPath: [NavigationItem] = [] {
-        didSet {
-            // Remove caches for removed navigation items
-            Set(oldValue.map(\.viewID)).subtracting(navigationPath.map(\.viewID)).forEach {
-                cleanUp(for: $0)
-            }
-        }
-    }
+    public var navigationPath: [NavigationItem] = []
     public var fullScreenItem: PresentationItem? {
         get { presentationItem?.fullScreenItem }
         set { presentationItem = newValue }
@@ -73,19 +66,12 @@ public final class DefaultCoordinator: Coordinator {
     @ObservationIgnored public private(set) weak var parent: (any Coordinator)?
 
     @ObservationIgnored private var canFinishCondition: (() async -> Bool)?
-    private var presentationItem: PresentationItem? {
-        didSet {
-            if presentationItem == nil, let viewID = oldValue?.coordinator.root.viewID {
-                cleanUp(for: viewID)
-            }
-        }
-    }
+    private var presentationItem: PresentationItem?
 
     private var currentUnresolvedRequirement: RequirementIdentifier?
     @ObservationIgnored private var observedRequirements: Set<RequirementIdentifier> = []
-    @ObservationIgnored private var requirementCancellables: [ViewID: AnyCancellable] = [:]
-    /// Cached objects per view id.
-    @ObservationIgnored private var cachedObjects: [ViewID: [ObjectIdentifier: WeakObject]] = [:]
+    /// Cached  objects per navigation item
+    @ObservationIgnored private var navigationItemData: [DestinationReference: NavigationItemData] = [:]
     @ObservationIgnored private var appearContinuation: CheckedContinuation<Void, Never>?
     @ObservationIgnored private var disappearContinuation: CheckedContinuation<Void, Never>?
 
@@ -108,6 +94,7 @@ public final class DefaultCoordinator: Coordinator {
         self.root = root
         self.parent = parent
         self.resolver = resolver
+        navigationItemData.add(root)
 
         // If there is no parent and the root has requirements, it means they haven't been validated.
         // Set a placeholder until the requirements are evaluated
@@ -154,6 +141,7 @@ public final class DefaultCoordinator: Coordinator {
 
             let navigationAction = (navigationAction ?? destination.preferredAction)[appHorizontalSizeClass]
             let navigationItem = NavigationItem(destination: destination, transition: navigationAction.transition)
+            navigationItemData.add(navigationItem)
             switch navigationAction {
             case .pushing:
                 // Dismiss of presented item did fail, discard
@@ -163,7 +151,7 @@ public final class DefaultCoordinator: Coordinator {
                 await itemDidCompleteAppearing()
                 return self
             case let .presenting(presentation, isModal, onDismiss):
-                if let presentationItem {
+                if presentationItem != nil {
                     // If there is already a presentation we wait until it was dismissed
                     await itemDidCompleteDisappearing()
                 }
@@ -300,15 +288,13 @@ public final class DefaultCoordinator: Coordinator {
     }
 
     public func view(for navigationItem: NavigationItem, context: inout ViewContext) -> any View {
-        context.cache = cachedObjects[navigationItem.viewID]?.compactMapValues(\.value) ?? [:]
+        context.cache = navigationItemData.cachedObjects(for: navigationItem)
         let view = resolver.view(
             for: navigationItem.visibleDestination,
             navigator: self,
             context: &context
         )
-        if !context.cache.isEmpty {
-            cachedObjects[navigationItem.viewID] = context.cache.mapValues { .init(value: $0) }
-        }
+        navigationItemData.cacheObjects(context.cache, for: navigationItem)
 
         return view
     }
@@ -338,7 +324,7 @@ public final class DefaultCoordinator: Coordinator {
         let publishers = requirements.map(\.publisher)
         guard !publishers.isEmpty else { return }
 
-        requirementCancellables[navigationItem.viewID] = Publishers.MergeMany(publishers)
+        navigationItemData.setRequirementCancellable(for: navigationItem, Publishers.MergeMany(publishers)
             .receive(on: RunLoop.main)
             .dropFirst(navigationItem == root ? 0 : 1)
             .filter { [weak self] in
@@ -352,6 +338,7 @@ public final class DefaultCoordinator: Coordinator {
                     await self?.evaluateRequirements(for: navigationItem)
                 }
             }
+        )
     }
 
     private func evaluateRequirements(for navigationItem: NavigationItem) async {
@@ -388,9 +375,14 @@ public final class DefaultCoordinator: Coordinator {
         }))
     }
 
-    private func cleanUp(for viewID: ViewID) {
-        cachedObjects.removeValue(forKey: viewID)
-        requirementCancellables.removeValue(forKey: viewID)
+    /// Removes all data related to views that are no longer in the view hierarchy
+    private func cleanUp() {
+        var activeIDs = [root.id]
+        presentationItem.map { activeIDs.append($0.coordinator.root.id) }
+        activeIDs.append(contentsOf: navigationPath.map(\.id))
+        navigationItemData = navigationItemData.filter { id, _ in
+            activeIDs.contains(id)
+        }
     }
 }
 
@@ -401,6 +393,7 @@ extension DefaultCoordinator {
     }
 
     public func itemDidDisappear() {
+        cleanUp()
         disappearContinuation?.resume()
         disappearContinuation = nil
     }
@@ -454,5 +447,43 @@ extension Array where Element == any Coordinator {
 
     public mutating func remove(_ coordinator: any Coordinator) {
         removeAll { $0.id == coordinator.id }
+    }
+}
+
+/// Privately used struct to hold navigation item related data
+private struct NavigationItemData {
+    /// Cached objects for view id of the visible destination
+    var objects: (ViewID, [ObjectIdentifier: WeakObject])?
+    /// A cancellable for any requirements that the navigation item has
+    var requirementCancellable: AnyCancellable?
+}
+
+extension Dictionary where Key == DestinationReference, Value == NavigationItemData {
+    /// Adds data for the given navigation item
+    /// - Parameter navigationItem: The navigation item to add
+    mutating func add(_ navigationItem: NavigationItem) {
+        self[navigationItem.id] = .init()
+    }
+
+    /// Sets the requirement cancellable for given navigation item
+    /// - Parameter navigationItem: The navigation item
+    /// - Parameter requirementCancellable: The cancellable observing the requirements for the given navigation item
+    mutating func setRequirementCancellable(for navigationItem: NavigationItem, _ requirementCancellable: AnyCancellable) {
+        self[navigationItem.id]?.requirementCancellable = requirementCancellable
+    }
+
+    /// Returns any cached objects for the active `viewID` of a navigation item
+    /// - Parameter navigationItem: The navigation item
+    /// - Returns cached objects for the visible destination of the given navigation item
+    func cachedObjects(for navigationItem: NavigationItem) -> [ObjectIdentifier: AnyObject] {
+        guard let (viewID, objects) = self[navigationItem.id]?.objects, viewID == navigationItem.viewID else { return [:] }
+        return objects.compactMapValues(\.value)
+    }
+
+    /// Caches given objects for the visible destination of the given navigation item
+    /// - Parameter objects: The objects to cache
+    /// - Parameter navigationItem: The navigation item
+    mutating func cacheObjects(_ objects: [ObjectIdentifier: AnyObject], for navigationItem: NavigationItem) {
+        self[navigationItem.id]?.objects = (navigationItem.viewID, objects.mapValues { .init(value: $0) })
     }
 }
