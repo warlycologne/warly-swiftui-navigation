@@ -324,21 +324,22 @@ public final class DefaultCoordinator: Coordinator {
         let publishers = requirements.map(\.publisher)
         guard !publishers.isEmpty else { return }
 
-        navigationItemData.setRequirementCancellable(for: navigationItem, Publishers.MergeMany(publishers)
-            .receive(on: RunLoop.main)
-            .dropFirst(navigationItem == root ? 0 : 1)
-            .filter { [weak self] in
-                [nil, $0].contains(self?.currentUnresolvedRequirement)
-            }
-            .sink { [weak self] _ in
-                guard let self else { return }
-                // Block publishers from emitting new values
-                currentUnresolvedRequirement = .pending
-                Task { @MainActor [weak self] in
-                    await self?.evaluateRequirements(for: navigationItem)
+        navigationItemData.setRequirementCancellable(for: navigationItem) {
+            Publishers.MergeMany(publishers)
+                .receive(on: RunLoop.main)
+                .dropFirst(navigationItem == root ? 0 : 1)
+                .filter { [weak self] in
+                    [nil, $0].contains(self?.currentUnresolvedRequirement)
                 }
-            }
-        )
+                .sink { [weak self] _ in
+                    guard let self else { return }
+                    // Block publishers from emitting new values
+                    currentUnresolvedRequirement = .pending
+                    Task { @MainActor [weak self] in
+                        await self?.evaluateRequirements(for: navigationItem)
+                    }
+                }
+        }
     }
 
     private func evaluateRequirements(for navigationItem: NavigationItem) async {
@@ -468,8 +469,8 @@ extension Dictionary where Key == DestinationReference, Value == NavigationItemD
     /// Sets the requirement cancellable for given navigation item
     /// - Parameter navigationItem: The navigation item
     /// - Parameter requirementCancellable: The cancellable observing the requirements for the given navigation item
-    mutating func setRequirementCancellable(for navigationItem: NavigationItem, _ requirementCancellable: AnyCancellable) {
-        self[navigationItem.id]?.requirementCancellable = requirementCancellable
+    mutating func setRequirementCancellable(for navigationItem: NavigationItem, _ requirementCancellable: () -> AnyCancellable) {
+        self[navigationItem.id]?.requirementCancellable = requirementCancellable()
     }
 
     /// Returns any cached objects for the active `viewID` of a navigation item
