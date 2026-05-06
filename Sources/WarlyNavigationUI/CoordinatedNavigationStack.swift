@@ -75,6 +75,7 @@ public struct CoordinatedNavigationStack: View {
 
     private func view(for navigationItem: NavigationItem, context: inout ViewContext) -> some View {
         AnyView(coordinator.view(for: navigationItem, context: &context))
+            .bottomSheetContent(isActive: context.presentation?.isBottomSheet ?? false)
             .environment(\.isViewFocused, isActive ? coordinator.isFocused(navigationItem: navigationItem) : false)
             .environment(\.destinationReference, navigationItem.id)
             .onLifecycleEvent { handleLifecycleEvent($0) }

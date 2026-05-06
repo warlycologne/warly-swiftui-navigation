@@ -7,7 +7,7 @@ import CompilerPluginSupport
 let package = Package(
     name: "WarlyNavigation",
     platforms: [
-        .iOS(.v17),
+        .iOS(.v18),
         .macOS(.v10_15),
     ],
     products: [

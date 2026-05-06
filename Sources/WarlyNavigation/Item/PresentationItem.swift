@@ -22,6 +22,11 @@ public enum Presentation: Sendable {
             transition
         }
     }
+
+    public var isBottomSheet: Bool {
+        guard case .bottomSheet = self else { return false }
+        return true
+    }
 }
 
 /// Defines the style how to transition to a view
@@ -56,8 +61,7 @@ public struct PresentationItem: Hashable, Identifiable {
     }
 
     public var isBottomSheet: Bool {
-        guard case .bottomSheet = presentation else { return false }
-        return true
+        presentation.isBottomSheet
     }
 
     @MainActor
