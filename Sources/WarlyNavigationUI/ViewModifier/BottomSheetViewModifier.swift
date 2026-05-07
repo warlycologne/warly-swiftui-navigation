@@ -21,10 +21,14 @@ private struct BottomSheetViewModifier: ViewModifier {
         content
             .presentationDetents([selectedDetent])
             .onPreferenceChange(BottomSheetHeightKey.self) { bottomSheetHeight in
-                if isActive, let bottomSheetHeight {
-                    selectedDetent = .height(bottomSheetHeight.value(verticalSafeAreaInsets: verticalSafeAreaInsets))
+                if isActive {
+                    if let bottomSheetHeight {
+                        selectedDetent = .height(bottomSheetHeight.value(verticalSafeAreaInsets: verticalSafeAreaInsets))
+                    } else {
+                        selectedDetent = .medium
+                    }
                 } else {
-                    selectedDetent = .medium
+                    selectedDetent = .large
                 }
             }
             .onGeometryChange(for: CGFloat.self) {
