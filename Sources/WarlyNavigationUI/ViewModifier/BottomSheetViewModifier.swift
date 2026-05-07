@@ -24,7 +24,7 @@ private struct BottomSheetViewModifier: ViewModifier {
                 if isActive, let bottomSheetHeight {
                     selectedDetent = .height(bottomSheetHeight.value(verticalSafeAreaInsets: verticalSafeAreaInsets))
                 } else {
-                    selectedDetent = .large
+                    selectedDetent = .medium
                 }
             }
             .onGeometryChange(for: CGFloat.self) {
